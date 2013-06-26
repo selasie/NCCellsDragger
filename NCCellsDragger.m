@@ -77,7 +77,7 @@ static void* kCellsDraggerKey = &kCellsDraggerKey;
 {
     UIPanGestureRecognizer* _panGestureRecognizer;
     UILongPressGestureRecognizer* _longPressGestureRecognizer;
-    __weak UITableView* _tableView;//declare tableView as weak
+    __weak UITableView* _tableView;//declare tableView as weak to prevent retain cycle between dragger and tableview
     NSTimer* _scrollingTimer;
 }
 
