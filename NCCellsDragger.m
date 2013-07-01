@@ -105,6 +105,7 @@ static void* kCellsDraggerKey = &kCellsDraggerKey;
     self.delegate = delegate;
     _tableView = tableView;
     _tableView.cellsDragger = self;
+    _isEnabled = YES;
     [self setup];
     return self;
 }
@@ -136,12 +137,26 @@ static void* kCellsDraggerKey = &kCellsDraggerKey;
     
 }
 
+- (void) setIsEnabled:(BOOL)isEnabled
+{
+    _isEnabled = isEnabled;
+    _longPressGestureRecognizer.enabled = _isEnabled;
+    _panGestureRecognizer.enabled = _isEnabled;
+}
+
 - (void) updateCells
 {
     NSIndexPath* newIndexPath = [_tableView indexPathForRowAtPoint:self.currentView.center];
     NSIndexPath* previousIndexPath = self.draggedCellIndexPath;
     
-    if(newIndexPath==nil || [newIndexPath isEqual:previousIndexPath])
+    BOOL canMove = YES;
+    
+    if([self.delegate respondsToSelector:@selector(cellsDragger:canMoveCellAtIndexPath:toIndexPath:)])
+    {
+        canMove = [self.delegate cellsDragger:self canMoveCellAtIndexPath:previousIndexPath toIndexPath:newIndexPath];
+    }
+    
+    if(!canMove || (newIndexPath==nil || [newIndexPath isEqual:previousIndexPath]))
     {
         return;
     }
@@ -196,6 +211,10 @@ static void* kCellsDraggerKey = &kCellsDraggerKey;
     }
     
     [_tableView moveRowAtIndexPath:previousIndexPath toIndexPath:newIndexPath];
+    if([self.delegate respondsToSelector:@selector(cellsDragger:didMoveCellAtIndexPath:toIndexPath:)])
+    {
+        [self.delegate cellsDragger:self didMoveCellAtIndexPath:previousIndexPath toIndexPath:newIndexPath];
+    }
 }
 
 - (void) stopTimer
@@ -216,10 +235,10 @@ static void* kCellsDraggerKey = &kCellsDraggerKey;
     [self stopTimer];
     
     _scrollingTimer = [NSTimer scheduledTimerWithTimeInterval:kScrollingFPS
-                                                           target:self
-                                                         selector:@selector(handleScroll:)
-                                                         userInfo:@{ kDraggingDirectionKey : @(direction) }
-                                                          repeats:YES];
+                                                       target:self
+                                                     selector:@selector(handleScroll:)
+                                                     userInfo:@{ kDraggingDirectionKey : @(direction) }
+                                                      repeats:YES];
 }
 
 - (void)handleScroll:(NSTimer *)timer {
@@ -314,8 +333,23 @@ static void* kCellsDraggerKey = &kCellsDraggerKey;
             self.lastSwappedIndexPath = nil;
             self.previousCenter = CGPointZero;
             self.draggedCellIndexPath = nil;
+            self.draggedCell = nil;
             self.currentCenter = CGPointZero;
             NSIndexPath* draggedIndexPath = [_tableView indexPathForRowAtPoint:[longPressRecoginzer locationInView:_tableView]];
+            
+            if([self.delegate respondsToSelector:@selector(cellsDragger:canMoveCellAtIndexPath:)])
+            {
+                if(![self.delegate cellsDragger:self canMoveCellAtIndexPath:draggedIndexPath])
+                {
+                    return;
+                }
+            }
+            
+            if([self.delegate respondsToSelector:@selector(cellsDragger:willBeginDraggingCellAtIndexPath:)])
+            {
+                [self.delegate cellsDragger:self willBeginDraggingCellAtIndexPath:draggedIndexPath];
+            }
+            
             self.draggedCellIndexPath = draggedIndexPath;
             
             UITableViewCell* cell = [_tableView cellForRowAtIndexPath:draggedIndexPath];
@@ -344,6 +378,13 @@ static void* kCellsDraggerKey = &kCellsDraggerKey;
             
             [UIView animateWithDuration:0.25 animations:^{
                 self.currentView.transform = CGAffineTransformMakeScale(1.02, 1.02);
+            } completion:^(BOOL finished) {
+                
+                if([self.delegate respondsToSelector:@selector(cellsDragger:didBeginDraggingCellAtIndexPath:)])
+                {
+                    [self.delegate cellsDragger:self didBeginDraggingCellAtIndexPath:draggedIndexPath];
+                }
+                
             }];
             
             cell.hidden = YES;
@@ -351,9 +392,22 @@ static void* kCellsDraggerKey = &kCellsDraggerKey;
             break;
         case UIGestureRecognizerStateEnded:
         {
+            NSIndexPath* draggedPath = self.draggedCellIndexPath;
+            
+            if([self.delegate respondsToSelector:@selector(cellsDragger:willEndDraggingCellAtIndexPath:)])
+            {
+                [self.delegate cellsDragger:self willEndDraggingCellAtIndexPath:draggedPath];
+            }
+            
             [self animateCurrentViewToIndexPath:self.draggedCellIndexPath completionBlock:^{
                 self.draggedCell.hidden = NO;
                 [self cleanup];
+                
+                if([self.delegate respondsToSelector:@selector(cellsDragger:didEndDraggingCellAtIndexPath:)])
+                {
+                    [self.delegate cellsDragger:self didEndDraggingCellAtIndexPath:draggedPath];
+                }
+                
             }];
             //self.draggedCell.hidden = NO;
             //[self cleanup];
@@ -397,17 +451,17 @@ static void* kCellsDraggerKey = &kCellsDraggerKey;
             break;
         case UIGestureRecognizerStateEnded:
         {
-//            [self animateCurrentViewToIndexPath:self.draggedCellIndexPath completionBlock:^{
-//                [self cleanup];
-//                self.draggedCell.hidden = NO;
-//            }];
+            //            [self animateCurrentViewToIndexPath:self.draggedCellIndexPath completionBlock:^{
+            //                [self cleanup];
+            //                self.draggedCell.hidden = NO;
+            //            }];
             //[self cleanup];
         }
             break;
         default:
             break;
     }
-
+    
     
 }
 
